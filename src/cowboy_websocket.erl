@@ -444,32 +444,34 @@ websocket_dispatch(State, Req, HandlerState, RemainingData, 10, Payload) ->
 	atom(), any(), fun()) -> closed.
 handler_call(State=#state{handler=Handler, opts=Opts}, Req, HandlerState,
 		RemainingData, Callback, Message, NextState) ->
-	try Handler:Callback(Message, Req, HandlerState) of
-		{ok, Req2, HandlerState2} ->
-			NextState(State, Req2, HandlerState2, RemainingData);
-		{ok, Req2, HandlerState2, hibernate} ->
-			NextState(State#state{hibernate=true},
-				Req2, HandlerState2, RemainingData);
-		{reply, Payload, Req2, HandlerState2}
-				when is_tuple(Payload) ->
-			ok = websocket_send(Payload, State),
-			NextState(State, Req2, HandlerState2, RemainingData);
-		{reply, Payload, Req2, HandlerState2, hibernate}
-				when is_tuple(Payload) ->
-			ok = websocket_send(Payload, State),
-			NextState(State#state{hibernate=true},
-				Req2, HandlerState2, RemainingData);
-		{reply, Payload, Req2, HandlerState2}
-				when is_list(Payload) ->
-			ok = websocket_send_many(Payload, State),
-			NextState(State, Req2, HandlerState2, RemainingData);
-		{reply, Payload, Req2, HandlerState2, hibernate}
-				when is_list(Payload) ->
-			ok = websocket_send_many(Payload, State),
-			NextState(State#state{hibernate=true},
-				Req2, HandlerState2, RemainingData);
-		{shutdown, Req2, HandlerState2} ->
-			websocket_close(State, Req2, HandlerState2, {normal, shutdown})
+	try
+		case Handler:Callback(Message, Req, HandlerState) of
+			{ok, Req2, HandlerState2} ->
+				NextState(State, Req2, HandlerState2, RemainingData);
+			{ok, Req2, HandlerState2, hibernate} ->
+				NextState(State#state{hibernate=true},
+					Req2, HandlerState2, RemainingData);
+			{reply, Payload, Req2, HandlerState2}
+					when is_tuple(Payload) ->
+				ok = websocket_send(Payload, State),
+				NextState(State, Req2, HandlerState2, RemainingData);
+			{reply, Payload, Req2, HandlerState2, hibernate}
+					when is_tuple(Payload) ->
+				ok = websocket_send(Payload, State),
+				NextState(State#state{hibernate=true},
+					Req2, HandlerState2, RemainingData);
+			{reply, Payload, Req2, HandlerState2}
+					when is_list(Payload) ->
+				ok = websocket_send_many(Payload, State),
+				NextState(State, Req2, HandlerState2, RemainingData);
+			{reply, Payload, Req2, HandlerState2, hibernate}
+					when is_list(Payload) ->
+				ok = websocket_send_many(Payload, State),
+				NextState(State#state{hibernate=true},
+					Req2, HandlerState2, RemainingData);
+			{shutdown, Req2, HandlerState2} ->
+				websocket_close(State, Req2, HandlerState2, {normal, shutdown})
+		end
 	catch Class:Reason ->
 		PLReq = cowboy_req:to_list(Req),
 		error_logger:error_msg(
