@@ -444,8 +444,7 @@ websocket_dispatch(State, Req, HandlerState, RemainingData, 10, Payload) ->
 	atom(), any(), fun()) -> closed.
 handler_call(State=#state{handler=Handler, opts=Opts}, Req, HandlerState,
 		RemainingData, Callback, Message, NextState) ->
-	try
-		case Handler:Callback(Message, Req, HandlerState) of
+	try Handler:Callback(Message, Req, HandlerState) of
 			{ok, Req2, HandlerState2} ->
 				NextState(State, Req2, HandlerState2, RemainingData);
 			{ok, Req2, HandlerState2, hibernate} ->
@@ -453,25 +452,41 @@ handler_call(State=#state{handler=Handler, opts=Opts}, Req, HandlerState,
 					Req2, HandlerState2, RemainingData);
 			{reply, Payload, Req2, HandlerState2}
 					when is_tuple(Payload) ->
-				ok = websocket_send(Payload, State),
-				NextState(State, Req2, HandlerState2, RemainingData);
+				case websocket_send(Payload, State) of 
+					{error, Reason} ->
+						handler_terminate(State, Req2, HandlerState2, {error, Reason});
+					_ ->
+						NextState(State, Req2, HandlerState2, RemainingData)
+				end;
 			{reply, Payload, Req2, HandlerState2, hibernate}
 					when is_tuple(Payload) ->
-				ok = websocket_send(Payload, State),
-				NextState(State#state{hibernate=true},
-					Req2, HandlerState2, RemainingData);
+				case websocket_send(Payload, State) of 
+					{error, Reason} ->
+						handler_terminate(State, Req2, HandlerState2, {error, Reason});
+					_ ->
+						NextState(State#state{hibernate=true},
+							Req2, HandlerState2, RemainingData)
+				end;
 			{reply, Payload, Req2, HandlerState2}
 					when is_list(Payload) ->
-				ok = websocket_send_many(Payload, State),
-				NextState(State, Req2, HandlerState2, RemainingData);
+				case websocket_send_many(Payload, State) of 
+					{error, Reason} ->
+						handler_terminate(State, Req2, HandlerState2, {error, Reason});
+					_ ->
+						NextState(State, Req2, HandlerState2, RemainingData)
+				end;			
 			{reply, Payload, Req2, HandlerState2, hibernate}
 					when is_list(Payload) ->
-				ok = websocket_send_many(Payload, State),
-				NextState(State#state{hibernate=true},
-					Req2, HandlerState2, RemainingData);
+				case websocket_send_many(Payload, State) of 
+					{error, Reason} ->
+						handler_terminate(State, Req2, HandlerState2, {error, Reason});
+					_ ->
+						NextState(State#state{hibernate=true},
+							Req2, HandlerState2, RemainingData)
+				end;	
+				
 			{shutdown, Req2, HandlerState2} ->
 				websocket_close(State, Req2, HandlerState2, {normal, shutdown})
-		end
 	catch Class:Reason ->
 		PLReq = cowboy_req:to_list(Req),
 		error_logger:error_msg(
@@ -510,7 +525,13 @@ websocket_send_many([], _) ->
 	ok;
 websocket_send_many([Frame|Tail], State) ->
 	ok = websocket_send(Frame, State),
-	websocket_send_many(Tail, State).
+	case websocket_send(Frame, State) of 
+		{error, Reason} ->
+			{error, Reason};
+		ok ->
+		websocket_send_many(Tail, State)
+		
+	end.
 
 -spec websocket_close(#state{}, cowboy_req:req(), any(), {atom(), atom()})
 	-> closed.
